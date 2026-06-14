@@ -6,9 +6,8 @@ SDK for building protocol analyzer plugins (shared libraries) loaded by the King
 
 - **`inc/`** — Public SDK headers (abstract base classes). Do not modify: binary compatibility with the closed-source `Analyzer` library is critical.
 - **`lib/`** — Prebuilt `Analyzer` library per platform (`Win32/`, `Win64/`, `Linux/`, `Mac/`). Source not included.
-- **`SerialAnalyzer/`, `SpiAnalyzer/`** — Example analyzers, each a shared library plugin.
-- **`SbwAnalyzer/`** — SBW analyzer (to be created following the same 4-source-pair pattern).
-- **PDF guides** — English and Chinese developer documentation in root (not machine-readable, ask user for excerpts).
+- **`SbwAnalyzer/`** — SBW analyzer plugin (4 source pairs).
+- **PDF guide** — English developer documentation in root (`KingstVIS Analyzer Developer Guide.pdf`, not machine-readable; ask user for excerpts).
 
 ## Plugin contract
 
@@ -85,20 +84,44 @@ Standard IEEE 1149.1 JTAG TAP controller. Key states: `Test-Logic-Reset → Run-
 
 | Instruction | Code | Description |
 |---|---|---|
-| `IR_ADDR_16BIT` | 0x83 | Load MAB from DR_SHIFT16/20 |
-| `IR_ADDR_CAPTURE` | 0x84 | Read MAB into DR |
-| `IR_DATA_TO_ADDR` | 0x85 | Write MDB from DR (addressed by MAB) |
-| `IR_DATA_16BIT` | 0x41 | Set MDB from DR (addressed by PC) |
-| `IR_DATA_QUICK` | 0x43 | Auto-incrementing access via PC |
-| `IR_BYPASS` | 0xFF | Bypass (also releases CPU) |
-| `IR_CNTRL_SIG_16BIT` | 0x13 | Read/write control signal register |
-| `IR_CNTRL_SIG_CAPTURE` | 0x14 | Capture control signals into DR |
-| `IR_CNTRL_SIG_RELEASE` | 0x15 | Release CPU from JTAG control |
-| `IR_DATA_PSA` | 0x44 | PSA (signature analysis) mode |
-| `IR_SHIFT_OUT_PSA` | 0x46 | Shift out PSA signature |
-| `IR_PREPARE_BLOW` | 0x22 | Prepare fuse blow |
+| `IR_JMB_WRITE_32BIT_MODE` | 0x11 | JTAG mailbox 32-bit write mode (5xx/6xx) |
+| `IR_ADDR_CAPTURE` | 0x21 | Read MAB into DR |
+| `IR_DATA_PSA` | 0x22 | PSA (signature analysis) mode |
 | `IR_EX_BLOW` | 0x24 | Execute fuse blow |
-| `IR_JMB_EXCHANGE` | 0x61 | JTAG mailbox exchange (5xx/6xx) |
+| `IR_CNTRL_SIG_CAPTURE` | 0x28 | Capture control signals into DR |
+| `IR_EMEX_WRITE_CONTROL` | 0x30 | EMEX write control |
+| `IR_FLASH_UPDATE` | 0x38 | Flash update |
+| `IR_ADDR_LOW_BYTE` | 0x41 | Load MAB low byte from DR |
+| `IR_DATA_CAPTURE` | 0x42 | Capture data into DR |
+| `IR_PREPARE_BLOW` | 0x44 | Prepare fuse blow |
+| `IR_JSTATE_ID` | 0x46 | JTAG state ID |
+| `IR_CNTRL_SIG_LOW_BYTE` | 0x48 | Read/write control signal low byte |
+| `IR_EMEX_READ_TRIGGER` | 0x50 | EMEX read trigger |
+| `IR_TEST_REG` | 0x54 | Test register access |
+| `IR_FLASH_CAPTURE` | 0x58 | Flash capture |
+| `IR_CAPTURE_CPU_REG` | 0x61 | Capture CPU register |
+| `IR_SHIFT_OUT_PSA` | 0x62 | Shift out PSA signature |
+| `IR_ADDR_HIGH_BYTE` | 0x81 | Load MAB high byte from DR |
+| `IR_DATA_16BIT` | 0x82 | Set MDB from DR (addressed by PC) |
+| `IR_JMB_EXCHANGE` | 0x86 | JTAG mailbox exchange (5xx/6xx) |
+| `IR_CNTRL_SIG_HIGH_BYTE` | 0x88 | Read/write control signal high byte |
+| `IR_EMEX_DATA_EXCHANGE` | 0x90 | EMEX data exchange |
+| `IR_CONFIG_FUSES` | 0x94 | Configure fuses |
+| `IR_FLASH_16BIT_UPDATE` | 0x98 | Flash 16-bit update |
+| `IR_DATA_TO_ADDR` | 0xA1 | Write MDB from DR (addressed by MAB) |
+| `IR_DATA_16BIT_OPT` | 0xA2 | Optional 16-bit data access |
+| `IR_CNTRL_SIG_RELEASE` | 0xA8 | Release CPU from JTAG control |
+| `IR_EMEX_DATA_EXCHANGE32` | 0xB0 | EMEX 32-bit data exchange |
+| `IR_ADDR_16BIT` | 0xC1 | Load MAB from DR_SHIFT16/20 |
+| `IR_DATA_QUICK` | 0xC2 | Auto-incrementing access via PC |
+| `IR_CNTRL_SIG_16BIT` | 0xC8 | Read/write control signal register |
+| `IR_EMEX_READ_CONTROL` | 0xD0 | EMEX read control |
+| `IR_FLASH_16BIT_IN` | 0xD8 | Flash 16-bit in |
+| `IR_DEVICE_ID` | 0xE1 | Read device ID |
+| `IR_DTA` | 0xE2 | Direct memory access |
+| `IR_CORE_IP_ID` | 0xE8 | Read core IP ID |
+| `IR_TEST_3VREG` | 0xF4 | Test 3V regulator |
+| `IR_BYPASS` | 0xFF | Bypass (also releases CPU) |
 
 - IR: 8-bit, **LSB first**.
 - DR (data register): 16-bit for data, 20-bit for MSP430X addresses, **MSB first**.
@@ -191,12 +214,9 @@ Key implementation patterns to note:
 ## Makefile quirks
 
 - Linux/Mac makefiles have a typo: `$(HFILe)` instead of `$(HFILE)` in dependency lines. Dependency tracking is broken but builds still succeed.
-- No unified build system — each analyzer is independent with per-platform makefiles/vcxproj.
 
 ## Absent from this repo
 
 - No tests, test framework, or test infrastructure
 - No CI/CD
 - No linting/formatting config
-- No `.gitignore`
-- No `.sln` (open `.vcxproj` directly in VS or use `msbuild`)

@@ -9,18 +9,29 @@ A protocol analyzer plugin for decoding TI MSP430 **Spy-Bi-Wire (SBW)** 2-wire J
 - Shift-IR and Shift-DR data accumulation with named MSP430 instruction decoding
 - CSV export of decoded JTAG transactions
 
+## Prerequisites
+
+1. Clone or download this repository
+2. Download the KingstVIS Analyzer SDK from [https://www.qdkingst.com/download/vis_sdk](https://www.qdkingst.com/download/vis_sdk)
+3. Extract the SDK archive to a temporary folder, then copy the `inc/` and `lib/` folders into the repository root:
+   ```
+   Kingst-Spi-Bi-Wire/
+   ├── inc/          ← SDK headers (copied from SDK archive)
+   ├── lib/          ← Prebuilt Analyzer library (copied from SDK archive)
+   ├── SbwAnalyzer/
+   └── ...
+   ```
+
 ## Project Structure
 
 ```
 inc/               — KingstVIS SDK headers (do not modify)
 lib/               — Prebuilt Analyzer library per platform (Win32, Win64, Linux, Mac)
-SbwAnalyzer/       — SBW analyzer plugin (4 source files)
+SbwAnalyzer/       — SBW analyzer plugin (4 source pairs)
   src/             — SbwAnalyzer, Settings, Results, SimulationDataGenerator
   vs2022/          — Visual Studio 2022 project/solution
   Linux/           — Linux Makefile
   Mac/             — macOS Makefile
-SerialAnalyzer/    — Example: Serial (UART) analyzer
-SpiAnalyzer/       — Example: SPI analyzer
 ```
 
 ## Building
@@ -39,4 +50,4 @@ Detailed SBW protocol documentation (TDM slot structure, JTAG instruction set, i
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GNU General Public License v2 — see [LICENSE](LICENSE).
