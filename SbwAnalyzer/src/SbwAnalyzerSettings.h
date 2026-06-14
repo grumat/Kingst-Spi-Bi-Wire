@@ -4,6 +4,7 @@
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
 
+
 class SbwAnalyzerSettings : public AnalyzerSettings
 {
 public:
@@ -16,12 +17,13 @@ public:
 
     void UpdateInterfacesFromSettings();
 
-    Channel mTDIOChannel;
-    Channel mTCKChannel;
+    Channel m_TDIOChannel;
+    Channel m_TCKChannel;
 
 protected:
-    std::auto_ptr< AnalyzerSettingInterfaceChannel > mTDIOChannelInterface;
-    std::auto_ptr< AnalyzerSettingInterfaceChannel > mTCKChannelInterface;
+    std::auto_ptr< AnalyzerSettingInterfaceChannel > m_ptrTDIOChannelInterface;
+    std::auto_ptr< AnalyzerSettingInterfaceChannel > m_ptrTCKChannelInterface;
 };
+
 
 #endif //SBW_ANALYZER_SETTINGS

@@ -5,35 +5,42 @@
 #include "SbwAnalyzerResults.h"
 #include "SbwSimulationDataGenerator.h"
 
-enum SbwState : U32 {
-    SbwTMS,
-    SbwTDI,
-    SbwTDO,
-    SbwIdle
+
+enum class SbwState : U32
+{
+    kSbwTms,
+    kSbwTdi,
+    kSbwTdo,
+    kSbwIdle
 };
 
-enum JtagState : U32 {
-    JtagReset,
-    JtagIdle,
 
-    JtagSelectDR,
-    JtagCaptureDR,
-    JtagShiftDR,
-    JtagExit1DR,
-    JtagPauseDR,
-    JtagExit2DR,
-    JtagUpdateDR,
+enum class JtagState : U32
+{
+    kJtagReset,
+    kJtagIdle,
 
-    JtagSelectIR,
-    JtagCaptureIR,
-    JtagShiftIR,
-    JtagExit1IR,
-    JtagPauseIR,
-    JtagExit2IR,
-    JtagUpdateIR
+    kJtagSelectDR,
+    kJtagCaptureDR,
+    kJtagShiftDR,
+    kJtagExit1DR,
+    kJtagPauseDR,
+    kJtagExit2DR,
+    kJtagUpdateDR,
+
+    kJtagSelectIR,
+    kJtagCaptureIR,
+    kJtagShiftIR,
+    kJtagExit1IR,
+    kJtagPauseIR,
+    kJtagExit2IR,
+    kJtagUpdateIR
 };
+
 
 class SbwAnalyzerSettings;
+
+
 class SbwAnalyzer : public Analyzer
 {
 public:
@@ -53,26 +60,37 @@ protected:
     void Setup();
     void ProcessJtag();
     void ProcessStep();
+    void CommitFrame(U64 ending_sample);
+
 protected:
-    std::auto_ptr< SbwAnalyzerSettings > mSettings;
-    std::auto_ptr< SbwAnalyzerResults > mResults;
-    bool mSimulationInitilized;
-    SbwSimulationDataGenerator mSimulationDataGenerator;
+    std::auto_ptr< SbwAnalyzerSettings > m_ptrSettings;
+    std::auto_ptr< SbwAnalyzerResults > m_ptrResults;
+    bool m_fSimulationInitilized;
+    SbwSimulationDataGenerator m_SimulationDataGenerator;
 
-    AnalyzerChannelData *mTCK;
-    AnalyzerChannelData *mTDIO;
+    AnalyzerChannelData *m_pTCK;
+    AnalyzerChannelData *m_pTDIO;
 
-    U64 mCurrentSample, mFirstSample, mTCKTimeout, mTDOSkip;
+    U64 m_CurrentSample, m_FirstSample, m_LastRisingSample, m_TCKTimeout, m_TDOSkip;
 
-    enum SbwState mSlot;
-    enum JtagState mState;
-    bool mTMSValue;
-    U64 mDataIn, mDataOut;
-    U32 mBits;
+    enum SbwState m_Slot;
+    enum JtagState m_State;
+    bool m_fTMSValue;
+    U64 m_DataIn, m_DataOut;
+    U32 m_Bits;
+
+    bool m_fFramePending;
+    U64 m_PendingStartSample, m_PendingData1, m_PendingData2;
+    U32 m_PendingFlags;
+    U8 m_PendingType;
+    JtagState m_PendingNextState;
+
 };
+
 
 extern "C" ANALYZER_EXPORT const char *__cdecl GetAnalyzerName();
 extern "C" ANALYZER_EXPORT Analyzer *__cdecl CreateAnalyzer();
 extern "C" ANALYZER_EXPORT void __cdecl DestroyAnalyzer(Analyzer *analyzer);
+
 
 #endif //SBW_ANALYZER_H

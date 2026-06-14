@@ -2,248 +2,287 @@
 #include "SbwAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
 
+
 SbwAnalyzer::SbwAnalyzer()
-    : Analyzer(),
-      mSettings(new SbwAnalyzerSettings()),
-      mSimulationInitilized(false),
-      mTCK(NULL),
-      mTDIO(NULL)
+	: Analyzer()
+	, m_ptrSettings(new SbwAnalyzerSettings())
+	, m_fSimulationInitilized(false)
+	, m_pTCK(NULL)
+	, m_pTDIO(NULL)
+	, m_fFramePending(false)
+	, m_LastRisingSample(0)
 {
-    SetAnalyzerSettings(mSettings.get());
+	SetAnalyzerSettings(m_ptrSettings.get());
 }
+
 
 SbwAnalyzer::~SbwAnalyzer()
 {
-    KillThread();
+	KillThread();
 }
+
 
 void SbwAnalyzer::SetupResults()
 {
-    mResults.reset(new SbwAnalyzerResults(this, mSettings.get()));
-    SetAnalyzerResults(mResults.get());
+	m_ptrResults.reset(new SbwAnalyzerResults(this, m_ptrSettings.get()));
+	SetAnalyzerResults(m_ptrResults.get());
 
-    mResults->AddChannelBubblesWillAppearOn(mSettings->mTCKChannel);
-    mResults->AddChannelBubblesWillAppearOn(mSettings->mTDIOChannel);
+	m_ptrResults->AddChannelBubblesWillAppearOn(m_ptrSettings->m_TCKChannel);
+	m_ptrResults->AddChannelBubblesWillAppearOn(m_ptrSettings->m_TDIOChannel);
 }
+
 
 void SbwAnalyzer::WorkerThread()
 {
 	Setup();
 
-	mSlot = SbwTMS;
-	mState = JtagReset;
-	mFirstSample = mTCK->GetSampleNumber();
-	mDataIn = mDataOut = 0;
-	mBits = 0;
+	m_Slot = SbwState::kSbwTms;
+	m_State = JtagState::kJtagReset;
+	m_DataIn = m_DataOut = 0;
+	m_Bits = 0;
+	m_fFramePending = false;
 
-	if (mTCK->GetBitState() == BIT_LOW)
-	{
-		// low
-		mTCK->AdvanceToNextEdge();
-		// high
-	}
+	if (m_pTCK->GetBitState() == BIT_LOW)
+		m_pTCK->AdvanceToNextEdge();
+
+	m_FirstSample = m_pTCK->GetSampleNumber();
+	m_LastRisingSample = m_FirstSample;
 
 	for (; ;)
 	{
-		// high
-		mTCK->AdvanceToNextEdge();
-		// low
-		mCurrentSample = mTCK->GetSampleNumber();
+		m_pTCK->AdvanceToNextEdge();
+		m_CurrentSample = m_pTCK->GetSampleNumber();
 
 		ProcessStep();
 
-		mTCK->AdvanceToNextEdge();
-		if (mTCK->GetSampleNumber() - mCurrentSample > mTCKTimeout)
-        {
-			mResults->AddMarker(mTCK->GetSampleNumber(), AnalyzerResults::Stop, mSettings->mTCKChannel);
-			mSlot = SbwIdle;
-			mState = JtagReset;
+		m_pTCK->AdvanceToNextEdge();
+		U64 rising_sample = m_pTCK->GetSampleNumber();
+		m_LastRisingSample = rising_sample;
+
+		if (m_fFramePending)
+			CommitFrame(rising_sample);
+
+		if (rising_sample - m_CurrentSample > m_TCKTimeout)
+		{
+			m_ptrResults->AddMarker(rising_sample, AnalyzerResults::Stop, m_ptrSettings->m_TCKChannel);
+			m_Slot = SbwState::kSbwIdle;
+			m_State = JtagState::kJtagReset;
 		}
 
 		CheckIfThreadShouldExit();
 	}
 }
 
+
 void SbwAnalyzer::Setup()
 {
-    mTCK = GetAnalyzerChannelData(mSettings->mTCKChannel);
-    mTDIO = GetAnalyzerChannelData(mSettings->mTDIOChannel);
+	m_pTCK = GetAnalyzerChannelData(m_ptrSettings->m_TCKChannel);
+	m_pTDIO = GetAnalyzerChannelData(m_ptrSettings->m_TDIOChannel);
 
-    mTCKTimeout = GetSampleRate() / 14286; // 7 us
-    mTDOSkip = GetSampleRate() / 10000000; // 100 ns
+	m_TCKTimeout = GetSampleRate() / 14286; // 7 us
+	m_TDOSkip = GetSampleRate() / 10000000; // 100 ns
 }
+
 
 void SbwAnalyzer::ProcessJtag()
 {
-	enum JtagState next_state = mState;
+	enum JtagState next_state = m_State;
 
-	switch (mState)
+	switch (m_State)
 	{
-	case JtagReset:
-		next_state = mTMSValue ? JtagReset : JtagIdle;
+	case JtagState::kJtagReset:
+		next_state = m_fTMSValue ? JtagState::kJtagReset : JtagState::kJtagIdle;
 		break;
 
-	case JtagIdle:
-		next_state = mTMSValue ? JtagSelectDR : JtagIdle;
+	case JtagState::kJtagIdle:
+		next_state = m_fTMSValue ? JtagState::kJtagSelectDR : JtagState::kJtagIdle;
 		break;
 
-	case JtagSelectDR:
-		next_state = mTMSValue ? JtagSelectIR : JtagCaptureDR;
+	case JtagState::kJtagSelectDR:
+		next_state = m_fTMSValue ? JtagState::kJtagSelectIR : JtagState::kJtagCaptureDR;
 		break;
 
-	case JtagCaptureDR:
-		next_state = mTMSValue ? JtagExit1DR : JtagShiftDR;
+	case JtagState::kJtagCaptureDR:
+		next_state = m_fTMSValue ? JtagState::kJtagExit1DR : JtagState::kJtagShiftDR;
 		break;
 
-	case JtagShiftDR:
-		next_state = mTMSValue ? JtagExit1DR : JtagShiftDR;
+	case JtagState::kJtagShiftDR:
+		next_state = m_fTMSValue ? JtagState::kJtagExit1DR : JtagState::kJtagShiftDR;
 		break;
 
-	case JtagExit1DR:
-		next_state = mTMSValue ? JtagUpdateDR : JtagPauseDR;
+	case JtagState::kJtagExit1DR:
+		next_state = m_fTMSValue ? JtagState::kJtagUpdateDR : JtagState::kJtagPauseDR;
 		break;
 
-	case JtagPauseDR:
-		next_state = mTMSValue ? JtagExit2DR : JtagPauseDR;
+	case JtagState::kJtagPauseDR:
+		next_state = m_fTMSValue ? JtagState::kJtagExit2DR : JtagState::kJtagPauseDR;
 		break;
 
-	case JtagExit2DR:
-		next_state = mTMSValue ? JtagUpdateDR : JtagShiftDR;
+	case JtagState::kJtagExit2DR:
+		next_state = m_fTMSValue ? JtagState::kJtagUpdateDR : JtagState::kJtagShiftDR;
 		break;
 
-	case JtagUpdateDR:
-		next_state = mTMSValue ? JtagSelectDR : JtagIdle;
+	case JtagState::kJtagUpdateDR:
+		next_state = m_fTMSValue ? JtagState::kJtagSelectDR : JtagState::kJtagIdle;
 		break;
 
-	case JtagSelectIR:
-		next_state = mTMSValue ? JtagReset : JtagCaptureIR;
+	case JtagState::kJtagSelectIR:
+		next_state = m_fTMSValue ? JtagState::kJtagReset : JtagState::kJtagCaptureIR;
 		break;
 
-	case JtagCaptureIR:
-		next_state = mTMSValue ? JtagExit1IR : JtagShiftIR;
+	case JtagState::kJtagCaptureIR:
+		next_state = m_fTMSValue ? JtagState::kJtagExit1IR : JtagState::kJtagShiftIR;
 		break;
 
-	case JtagShiftIR:
-		next_state = mTMSValue ? JtagExit1IR : JtagShiftIR;
+	case JtagState::kJtagShiftIR:
+		next_state = m_fTMSValue ? JtagState::kJtagExit1IR : JtagState::kJtagShiftIR;
 		break;
 
-	case JtagExit1IR:
-		next_state = mTMSValue ? JtagUpdateIR : JtagPauseIR;
+	case JtagState::kJtagExit1IR:
+		next_state = m_fTMSValue ? JtagState::kJtagUpdateIR : JtagState::kJtagPauseIR;
 		break;
 
-	case JtagPauseIR:
-		next_state = mTMSValue ? JtagExit2IR : JtagPauseIR;
+	case JtagState::kJtagPauseIR:
+		next_state = m_fTMSValue ? JtagState::kJtagExit2IR : JtagState::kJtagPauseIR;
 		break;
 
-	case JtagExit2IR:
-		next_state = mTMSValue ? JtagUpdateIR : JtagShiftIR;
+	case JtagState::kJtagExit2IR:
+		next_state = m_fTMSValue ? JtagState::kJtagUpdateIR : JtagState::kJtagShiftIR;
 		break;
 
-	case JtagUpdateIR:
-		next_state = mTMSValue ? JtagSelectDR : JtagIdle;
+	case JtagState::kJtagUpdateIR:
+		next_state = m_fTMSValue ? JtagState::kJtagSelectDR : JtagState::kJtagIdle;
 		break;
 	}
 
-	if (next_state != mState)
+	if (next_state != m_State)
 	{
-		Frame result_frame;
-		result_frame.mStartingSampleInclusive = mFirstSample;
-		result_frame.mEndingSampleInclusive = mTCK->GetSampleNumber();
-		result_frame.mData1 = mDataIn;
-		result_frame.mData2 = mDataOut;
-		result_frame.mFlags = mState;
-		result_frame.mType = (U8)mBits;
+		m_fFramePending = true;
+		m_PendingStartSample = m_FirstSample;
+		m_PendingData1 = m_DataIn;
+		m_PendingData2 = m_DataOut;
+		m_PendingFlags = static_cast<U32>(m_State);
+		m_PendingType = (U8)m_Bits;
+		m_PendingNextState = next_state;
 
-		U64 frame_id = mResults->AddFrame(result_frame);
-		mResults->CommitResults();
-
-		mFirstSample = mTCK->GetSampleNumber();
-		mState = next_state;
-		mDataIn = mDataOut = 0;
-		mBits = 0;
+		m_DataIn = m_DataOut = 0;
+		m_Bits = 0;
 	}
 }
 
+
+void SbwAnalyzer::CommitFrame(U64 ending_sample)
+{
+	m_fFramePending = false;
+
+	Frame result_frame;
+	result_frame.mStartingSampleInclusive = m_PendingStartSample;
+	result_frame.mEndingSampleInclusive = ending_sample;
+	result_frame.mData1 = m_PendingData1;
+	result_frame.mData2 = m_PendingData2;
+	result_frame.mFlags = m_PendingFlags;
+	result_frame.mType = m_PendingType;
+
+	m_ptrResults->AddFrame(result_frame);
+	m_ptrResults->CommitResults();
+
+	m_FirstSample = ending_sample;
+	m_State = m_PendingNextState;
+}
+
+
 void SbwAnalyzer::ProcessStep()
 {
-	mTDIO->AdvanceToAbsPosition(mCurrentSample);
+	m_pTDIO->AdvanceToAbsPosition(m_CurrentSample);
 
-	mResults->AddMarker(mCurrentSample, AnalyzerResults::DownArrow, mSettings->mTCKChannel);
+	m_ptrResults->AddMarker(m_CurrentSample, AnalyzerResults::DownArrow, m_ptrSettings->m_TCKChannel);
 
-	switch (mSlot)
+	switch (m_Slot)
 	{
-	case SbwIdle:
-		mSlot = SbwTMS;
+	case SbwState::kSbwIdle:
+		m_Slot = SbwState::kSbwTms;
 		break;
 
-	case SbwTMS:
-		mSlot = SbwTDI;
-		mTMSValue = mTDIO->GetBitState();
+	case SbwState::kSbwTms:
+		m_Slot = SbwState::kSbwTdi;
+		m_fTMSValue = m_pTDIO->GetBitState();
 		break;
 
-	case SbwTDI:
-		mSlot = SbwTDO;
-		if (mState == JtagShiftDR || mState == JtagShiftIR)
+	case SbwState::kSbwTdi:
+		m_Slot = SbwState::kSbwTdo;
+		if (m_State == JtagState::kJtagShiftDR || m_State == JtagState::kJtagShiftIR)
 		{
-			mDataIn = (mDataIn << 1) | (mTDIO->GetBitState() ? 1 : 0);
-			mResults->AddMarker(mCurrentSample, AnalyzerResults::Dot, mSettings->mTDIOChannel);
+			m_DataIn = (m_DataIn << 1) | (m_pTDIO->GetBitState() ? 1 : 0);
+			m_ptrResults->AddMarker(m_CurrentSample, AnalyzerResults::Dot, m_ptrSettings->m_TDIOChannel);
 		}
 		break;
 
-	case SbwTDO:
-		mSlot = SbwTMS;
-		if (mState == JtagShiftDR || mState == JtagShiftIR)
+	case SbwState::kSbwTdo:
+		m_Slot = SbwState::kSbwTms;
+		if (m_State == JtagState::kJtagShiftDR || m_State == JtagState::kJtagShiftIR)
 		{
-			mTDIO->Advance((U32)mTDOSkip);
-			mDataOut = (mDataOut << 1) | (mTDIO->GetBitState() ? 1 : 0);
-			mResults->AddMarker(mTDIO->GetSampleNumber(), AnalyzerResults::Dot, mSettings->mTDIOChannel);
-			mBits++;
+			m_pTDIO->Advance((U32)m_TDOSkip);
+			m_DataOut = (m_DataOut << 1) | (m_pTDIO->GetBitState() ? 1 : 0);
+			m_Bits++;
+
+			U64 dot_pos = m_CurrentSample + (m_CurrentSample - m_LastRisingSample) / 2;
+			AnalyzerResults::MarkerType tdo_marker = m_pTDIO->GetBitState() == BIT_HIGH ? AnalyzerResults::One : AnalyzerResults::Zero;
+			m_ptrResults->AddMarker(dot_pos, tdo_marker, m_ptrSettings->m_TDIOChannel);
 		}
 		ProcessJtag();
 	}
 }
 
+
 bool SbwAnalyzer::NeedsRerun()
 {
-    return false;
+	return false;
 }
 
-U32 SbwAnalyzer::GenerateSimulationData(U64 minimum_sample_index, U32 device_sample_rate, SimulationChannelDescriptor **simulation_channels)
+
+U32 SbwAnalyzer::GenerateSimulationData(U64 minimum_sample_index, U32 device_sample_rate, SimulationChannelDescriptor** simulation_channels)
 {
-    if (mSimulationInitilized == false) {
-        mSimulationDataGenerator.Initialize(GetSimulationSampleRate(), mSettings.get());
-        mSimulationInitilized = true;
-    }
+	if (m_fSimulationInitilized == false)
+	{
+		m_SimulationDataGenerator.Initialize(GetSimulationSampleRate(), m_ptrSettings.get());
+		m_fSimulationInitilized = true;
+	}
 
-    return mSimulationDataGenerator.GenerateSimulationData(minimum_sample_index, device_sample_rate, simulation_channels);
+	return m_SimulationDataGenerator.GenerateSimulationData(minimum_sample_index, device_sample_rate, simulation_channels);
 }
+
 
 U32 SbwAnalyzer::GetMinimumSampleRateHz()
 {
-    return 10000;
+	return 10000;
 }
 
-const char *SbwAnalyzer::GetAnalyzerVersion() const
+
+const char* SbwAnalyzer::GetAnalyzerVersion() const
 {
-    return "1.0";
+	return "2.0";
 }
 
-const char *SbwAnalyzer::GetAnalyzerName() const
+
+const char* SbwAnalyzer::GetAnalyzerName() const
 {
-    return "Spy-Bi-Wire";
+	return "Spy-Bi-Wire";
 }
 
-const char *GetAnalyzerName()
+
+const char* GetAnalyzerName()
 {
-    return "Spy-Bi-Wire";
+	return "Spy-Bi-Wire";
 }
 
-Analyzer *CreateAnalyzer()
+
+Analyzer* CreateAnalyzer()
 {
-    return new SbwAnalyzer();
+	return new SbwAnalyzer();
 }
 
-void DestroyAnalyzer(Analyzer *analyzer)
+
+void DestroyAnalyzer(Analyzer* analyzer)
 {
-    delete analyzer;
+	delete analyzer;
 }

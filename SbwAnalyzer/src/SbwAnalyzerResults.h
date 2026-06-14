@@ -3,8 +3,10 @@
 
 #include <AnalyzerResults.h>
 
+
 class SbwAnalyzer;
 class SbwAnalyzerSettings;
+
 
 class SbwAnalyzerResults : public AnalyzerResults
 {
@@ -20,8 +22,9 @@ public:
     virtual void GenerateTransactionTabularText(U64 transaction_id, DisplayBase display_base);
 
 protected:
-    SbwAnalyzerSettings *mSettings;
-    SbwAnalyzer *mAnalyzer;
+    SbwAnalyzerSettings *m_pSettings;
+    SbwAnalyzer *m_pAnalyzer;
 };
+
 
 #endif //SBW_ANALYZER_RESULTS
