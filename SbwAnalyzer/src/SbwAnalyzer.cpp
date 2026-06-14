@@ -223,6 +223,11 @@ U32 SbwAnalyzer::GetMinimumSampleRateHz()
     return 10000;
 }
 
+const char *SbwAnalyzer::GetAnalyzerVersion() const
+{
+    return "1.0";
+}
+
 const char *SbwAnalyzer::GetAnalyzerName() const
 {
     return "Spy-Bi-Wire";
